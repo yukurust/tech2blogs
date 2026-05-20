@@ -2,7 +2,7 @@
 
 ZennとQiitaに自動投稿できる環境を整えたリポジトリです。
 
-※ [notes2blogs](https://github.com/yshi112358/notes2blogs) と同じレイアウトで作成しています。`articles/` は Zenn 側のソース記事のみ空にしており、現状は `articles/.gitkeep` でディレクトリだけ追跡しています（Qiita の `qiita/public/` や `images/` は notes2blogs 由来の複製があります）。
+※ [notes2blogs](https://github.com/yukurust/notes2blogs) と同じレイアウトで作成しています。`articles/` は Zenn 側のソース記事のみ空にしており、現状は `articles/.gitkeep` でディレクトリだけ追跡しています（Qiita の `qiita/public/` や `images/` は notes2blogs 由来の複製があります）。
 
 ## ディレクトリ構造
 
@@ -38,7 +38,7 @@ npm install
 
 ### 3. GitHubリポジトリにシークレット変数を登録
 
-`https://github.com/yshi112358/tech2blogs/settings/secrets/actions/new` にアクセスして、以下の情報を登録してください：
+`https://github.com/yukurust/tech2blogs/settings/secrets/actions/new` にアクセスして、以下の情報を登録してください：
 
 - **Name**: `QIITA_TOKEN`
 - **Secret**: 取得したQiitaのアクセストークン
