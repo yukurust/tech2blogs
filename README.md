@@ -14,7 +14,8 @@ ZennとQiitaに自動投稿できる環境を整えたリポジトリです。
 ├── articles
 │   └── <Zenn形式の記事>
 ├── books
-│   └── <Zenn形式の本 (任意)>
+│   └── reserved-book-slot
+│       └── config.yaml  # Zenn 標準構成のプレースホルダ（`chapters: []`・非公開）
 ├── images
 │   └── <記事で使用する画像ファイル>
 └── qiita

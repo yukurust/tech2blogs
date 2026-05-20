@@ -1,0 +1,9 @@
+# Zenn の本フォルダ雛形（未使用・常に非公開）
+# 新規の本は `npx zenn new:book` で作成するか、このディレクトリを複製して使ってください。
+# https://zenn.dev/zenn/articles/zenn-cli-guide —「CLI で本（book）を管理する」参照
+title: "（この本はプレースホルダです）"
+summary: ""
+topics: []
+published: false
+price: 0
+chapters: []
