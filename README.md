@@ -2,6 +2,8 @@
 
 ZennとQiitaに自動投稿できる環境を整えたリポジトリです。
 
+※ [notes2blogs](https://github.com/yshi112358/notes2blogs) と同じレイアウトで作成しています。`articles/` は Zenn 側のソース記事のみ空にしており、現状は `articles/.gitkeep` でディレクトリだけ追跡しています（Qiita の `qiita/public/` や `images/` は notes2blogs 由来の複製があります）。
+
 ## ディレクトリ構造
 
 ```
