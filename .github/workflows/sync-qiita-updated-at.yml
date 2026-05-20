@@ -1,0 +1,50 @@
+name: Sync Qiita public updated_at
+
+# qiita/public の本文がコミットで変わったとき、front matter の updated_at を
+# そのファイルを最後に変更したコミットの committer 日時（UTC）に合わせる。
+# [skip ci] で無限ループを避ける（フロントマターだけの bot コミットは本文差分が無いので再実行時は no-op）。
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'qiita/public/*.md'
+      - 'qiita/public/**/*.md'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.repository }}-mutations-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sync_updated_at:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Align updated_at with git commit time (body-only trigger)
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: python3 .github/scripts/sync_qiita_public_updated_at.py
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add qiita/public
+          if git diff --staged --quiet; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(qiita): sync updated_at from git (body edit) [skip ci]"
+          git push

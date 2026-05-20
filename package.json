@@ -1,0 +1,20 @@
+{
+  "name": "tech2blogs",
+  "version": "1.0.0",
+  "description": "Automatically publish articles to Zenn and Qiita",
+  "scripts": {
+    "preview": "zenn preview",
+    "new:article": "zenn new:article"
+  },
+  "keywords": [
+    "zenn",
+    "qiita",
+    "blog",
+    "markdown"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "zenn-cli": "^0.1.144"
+  }
+}

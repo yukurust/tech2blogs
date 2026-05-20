@@ -1,0 +1,146 @@
+name: Publish articles
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      force_qiita_publish:
+        description: articles/ を変えていなくても Qiita へ publish する（全件・要トークン）
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.repository }}-mutations-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish_articles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Converter のみ上流リポジトリから取得（ルートの package.json は触らない）
+      - name: Checkout zenn-qiita-sync (converter)
+        uses: actions/checkout@v4
+        with:
+          repository: C-Naoki/zenn-qiita-sync
+          path: _zqs
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Get changed Zenn markdown files
+        id: changed
+        shell: bash
+        run: |
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+          if [[ "$BEFORE" == "0000000000000000000000000000000000000000" ]] || [[ -z "$BEFORE" ]]; then
+            BEFORE="$(git rev-parse HEAD^ 2>/dev/null || true)"
+          fi
+          git diff --name-only "$BEFORE" "$AFTER" \
+            | grep '^articles/.*\.md$' > "$GITHUB_WORKSPACE/changed_files.txt" || true
+          echo '📋 Changed markdown files:'
+          if [[ -s "$GITHUB_WORKSPACE/changed_files.txt" ]]; then
+            cat "$GITHUB_WORKSPACE/changed_files.txt"
+            echo "has_files=true" >> "$GITHUB_OUTPUT"
+          else
+            echo '(none)'
+            echo "has_files=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Convert Zenn → Qiita
+        if: steps.changed.outputs.has_files == 'true'
+        shell: bash
+        run: |
+          npm install --no-package-lock --no-save @qiita/qiita-cli >/dev/null
+          rm -f "$GITHUB_WORKSPACE/qiita_publish_targets.txt"
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            filename="$(basename "$file" .md)"
+            echo "🚀 Convert $file to Qiita format"
+            if [[ "$file" != articles/* ]]; then
+              echo "⚠️ invalid file path: $file"
+              if [[ -f "qiita/public/$filename.md" ]]; then
+                rm "qiita/public/$filename.md"
+              fi
+              continue
+            fi
+            if grep -q 'published: true' "$file"; then
+              if [[ ! -f "qiita/public/$filename.md" ]]; then
+                echo '🌱 Create new Qiita article stub'
+                (cd qiita && npx qiita new "$filename")
+              fi
+              echo "🚚 Convert $file to qiita/public/$filename.md"
+              node "$GITHUB_WORKSPACE/_zqs/dist/index.js" "$file" "./qiita/public/$filename.md"
+              echo "$filename" >> "$GITHUB_WORKSPACE/qiita_publish_targets.txt"
+            fi
+          done < "$GITHUB_WORKSPACE/changed_files.txt"
+          rm -f "$GITHUB_WORKSPACE/changed_files.txt"
+
+      # qiita/public は publish 成功後にのみコミットされる（id: null など中途半端な状態を main に載せない）
+      # articles/ の差分がないプッシュではスキップ（ローカル id と Qiita 不整合で毎回 404 になるのを防ぐ）
+      # デフォルトは「今回の push で published: true の articles に対応する記事のみ」publish（--all による無関係記事の巻き込みを防ぐ）
+      # workflow_dispatch で force_qiita_publish かつ articles 変更が無いときだけ --all（従来どおり全件）
+
+      # Qiita 送信直前に updated_at をトリガーコミット基準で揃える（「Qiita 上より古い」ガード対策）
+      - name: Align updated_at before Qiita publish
+        if: ${{ steps.changed.outputs.has_files == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force_qiita_publish == 'true') }}
+        shell: bash
+        env:
+          QIITA_SYNC_MODE: publish
+          AFTER_SHA: ${{ github.sha }}
+          TARGETS_FILE: ${{ github.workspace }}/qiita_publish_targets.txt
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          export PUBLISH_ALL=false
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.force_qiita_publish }}" == "true" && "${{ steps.changed.outputs.has_files }}" != "true" ]]; then
+            export PUBLISH_ALL=true
+          fi
+          python3 .github/scripts/sync_qiita_public_updated_at.py
+
+      - name: Publish to Qiita
+        if: ${{ steps.changed.outputs.has_files == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force_qiita_publish == 'true') }}
+        shell: bash
+        env:
+          QIITA_TOKEN: ${{ secrets.QIITA_TOKEN }}
+        run: |
+          set -euo pipefail
+          npm install -g @qiita/qiita-cli@1.8.0
+          cd "$GITHUB_WORKSPACE"
+          TARGETS_FILE="$GITHUB_WORKSPACE/qiita_publish_targets.txt"
+          # 手動・articles 未変更のときのみ全件
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && [[ "${{ github.event.inputs.force_qiita_publish }}" == "true" ]] && [[ "${{ steps.changed.outputs.has_files }}" != "true" ]]; then
+            echo "📤 Qiita: publish --all（workflow_dispatch / articles 差分なし）"
+            qiita publish --all --root ./qiita
+          elif [[ -s "$TARGETS_FILE" ]]; then
+            mapfile -t TARGETS < "$TARGETS_FILE"
+            echo "📤 Qiita: 変更のあった記事のみ publish（${#TARGETS[@]} 件）: ${TARGETS[*]}"
+            qiita publish "${TARGETS[@]}" --root ./qiita
+          else
+            echo "📭 Qiita publish 対象なし（published: true の articles 変更がないなど）。スキップします。"
+            exit 0
+          fi
+          git add qiita/public/*
+          if git diff --staged --quiet; then
+            echo "qiita/public にコミットする差分はありません。"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "Updated by qiita-cli"
+            git push
+          fi
